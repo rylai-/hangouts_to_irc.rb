@@ -8,5 +8,9 @@ Usage:
 
 This will spit out all of your chats named semi-appropriately. It looks awful, but it works well enough for our purposes.
 
-#TODO
-- mappings for get_friendly_name, preferably in a mappings.yml file
+# ALIASES
+You can map a `chat_id` to a friendlier name with the aliases.yaml file. It's a simple YAML hash of id to name.
+
+The script should give you a list of mappings of IDs to names after being run on a file. This will be in a prettyprinted Ruby
+
+Hash format, not suitable for being copypasted into aliases.yaml. Sorry about that. I might change that eventually.

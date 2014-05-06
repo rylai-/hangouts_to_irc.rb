@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 
 require 'yajl'
+require 'yaml'
+require 'pp'
 
 class Message
   attr_reader :lines
@@ -68,9 +70,11 @@ class Event
 
 end
 class Conversation
-  attr_reader :events, :participants, :id, :me, :pm, :name
+  attr_reader :events, :participants, :id, :me, :pm, :name, :aliases
   attr_accessor :name
-  def initialize hash
+  def initialize hash, aliases=nil
+    @@suggested_aliases ||= Hash.new {|hsh, key| hsh[key] = [] }
+    @aliases = aliases
     @id     = hash[:conversation_id][:id]
     @events = hash[:conversation_state][:event].map { |e| Event.new e, self }.sort_by { |e| e.timestamp }
     @participants = hash[:conversation_state][:conversation][:participant_data]
@@ -85,8 +89,14 @@ class Conversation
     end
   end
   def get_friendly_name chat_id
+    if @aliases && @aliases[chat_id.to_i]
+      return @aliases[chat_id.to_i]
+    end
     participant = @participants.find { |p| p[:id][:chat_id] == chat_id.to_s }
     unless participant.nil?
+      if participant[:fallback_name] && !@@suggested_aliases[chat_id].include?(participant[:fallback_name])
+        @@suggested_aliases[chat_id] << participant[:fallback_name]
+      end
       participant[:fallback_name] || chat_id
     else
       "unknown"
@@ -97,13 +107,16 @@ class Conversation
       file_handle.puts event.to_s
     end
   end
+  def suggested_aliases
+    @@suggested_aliases
+  end
 end
 
 def write_conversation_to_file conversation
-  unknown_count = 0
+  @unknown_count ||= 0
   if conversation.name.nil?
-    filename = "unknown_#{unknown_count}.log"
-    unknown_count += 1
+    filename = "unknown_#{@unknown_count}.log"
+    @unknown_count += 1
   else
     filename = "#{conversation.name}.log"
   end
@@ -115,12 +128,21 @@ def write_conversation_to_file conversation
   end
 end
 
+
 abort "incorrect amount of arguments: usage is #{$0} Hangouts.json" unless ARGV.length == 1
 
 parser = Yajl::Parser.new(:symbolize_keys => true)
 file = File.open(ARGV.first)
-conversations = parser.parse(file)[:conversation_state].map { |c| Conversation.new c }
+aliases = {}
+if File.exists?('aliases.yaml')
+  aliases = YAML.load_file('aliases.yaml')
+end
+conversations = parser.parse(file)[:conversation_state].map { |c| Conversation.new c, aliases }
 conversations.each do |conversation|
   puts "writing #{conversation.name} to file..."
   write_conversation_to_file conversation
+end
+unless conversations.last.suggested_aliases.empty?
+  puts "I recommend that you add some of the following to your aliases.yaml file and run me again:"
+  pp conversations.last.suggested_aliases
 end
