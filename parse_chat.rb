@@ -2,9 +2,25 @@
 
 require 'yajl'
 
-class Event
-  attr_reader :sender, :timestamp, :type, :data
+class Message
+  attr_reader :lines
   def initialize hash
+    @lines = []
+    if hash[:segment]
+      hash[:segment].each do |seg|
+        @lines << seg[:text]
+      end
+    end
+    if hash[:attachment]
+      hash[:attachment].each do |attachment|
+        @lines << attachment[:embed_item]['embeds.PlusPhoto.plus_photo'.to_sym][:url]
+      end
+    end
+  end
+end
+class Event
+  attr_reader :sender, :timestamp, :type, :data, :conversation
+  def initialize hash, conversation
     case hash[:event_type]
     when 'REGULAR_CHAT_MESSAGE'
       @type = :msg
@@ -17,11 +33,11 @@ class Event
     when 'RENAME_CONVERSATION'
       @type = :topic_change
     else
-      abort "wtf? found unknown message type #{hash[:event_type]}, exiting"
+      abort "wtf? found unknown event type #{hash[:event_type]}, exiting"
     end
     case @type
     when :msg
-      @data = hash[:chat_message][:message_content][:segment]
+      @data = Message.new hash[:chat_message][:message_content]
     when :topic_change
       @data = hash[:conversation_rename]
     when :join, :part
@@ -29,7 +45,82 @@ class Event
     when :call
       @data = hash[:hangout_event]
     end
+    @conversation = conversation
     @sender    = hash[:sender_id]
     @timestamp = hash[:timestamp].to_i / 1000000
   end
+  def to_s
+    case @type
+    when :msg
+      @data.lines.map do |line|
+        "#{Time.at(@timestamp).strftime('%F %T')} <#{@conversation.get_friendly_name @sender[:chat_id]}> #{line}"
+      end.join "\n"
+    when :topic_change
+      "#{Time.at(@timestamp).strftime('%F %T')} #{@conversation.get_friendly_name @sender[:chat_id]} changed the topic from #{@data[:old_name] || '(none)'} to #{data[:new_name]}"
+    when :join
+      "#{Time.at(@timestamp).strftime('%F %T')} --> #{@conversation.get_friendly_name @sender[:chat_id]} has joined the chat"
+    when :part
+      "#{Time.at(@timestamp).strftime('%F %T')} --> #{@conversation.get_friendly_name @sender[:chat_id]} has left the chat"
+    when :call
+      "#{Time.at(@timestamp).strftime('%F %T')} --> #{@conversation.get_friendly_name @sender[:chat_id]} called the chat"
+    end
+  end
+
+end
+class Conversation
+  attr_reader :events, :participants, :id, :me, :pm, :name
+  attr_accessor :name
+  def initialize hash
+    @id     = hash[:conversation_id][:id]
+    @events = hash[:conversation_state][:event].map { |e| Event.new e, self }.sort_by { |e| e.timestamp }
+    @participants = hash[:conversation_state][:conversation][:participant_data]
+    @me     = hash[:conversation_state][:conversation][:self_conversation_state][:self_read_state][:participant_id]
+    case hash[:conversation_state][:conversation][:type]
+    when 'STICKY_ONE_TO_ONE'
+      @pm = true
+      @name = get_friendly_name (hash[:conversation_state][:conversation][:current_participant] - [@me]).first[:chat_id]
+    when 'GROUP'
+      @pm = false
+      @name = hash[:conversation_state][:conversation][:name]
+    end
+  end
+  def get_friendly_name chat_id
+    participant = @participants.find { |p| p[:id][:chat_id] == chat_id.to_s }
+    unless participant.nil?
+      participant[:fallback_name] || chat_id
+    else
+      "unknown"
+    end
+  end
+  def write_to_file file_handle
+    @events.each do |event|
+      file_handle.puts event.to_s
+    end
+  end
+end
+
+def write_conversation_to_file conversation
+  unknown_count = 0
+  if conversation.name.nil?
+    filename = "unknown_#{unknown_count}.log"
+    unknown_count += 1
+  else
+    filename = "#{conversation.name}.log"
+  end
+
+  File.open(filename, 'w') do |f|
+    conversation.events.each do |event|
+      f.puts event.to_s
+    end
+  end
+end
+
+abort "incorrect amount of arguments: usage is #{$0} Hangouts.json" unless ARGV.length == 1
+
+parser = Yajl::Parser.new(:symbolize_keys => true)
+file = File.open(ARGV.first)
+conversations = parser.parse(file)[:conversation_state].map { |c| Conversation.new c }
+conversations.each do |conversation|
+  puts "writing #{conversation.name} to file..."
+  write_conversation_to_file conversation
 end
