@@ -20,6 +20,8 @@ class Message
     end
   end
 end
+
+
 class Event
   attr_reader :sender, :timestamp, :type, :data, :conversation
   def initialize hash, conversation
@@ -69,6 +71,8 @@ class Event
   end
 
 end
+
+
 class Conversation
   attr_reader :events, :participants, :id, :me, :pm, :name, :aliases
   attr_accessor :name
@@ -112,6 +116,7 @@ class Conversation
   end
 end
 
+
 def write_conversation_to_file conversation
   @unknown_count ||= 0
   if conversation.name.nil?
@@ -128,6 +133,13 @@ def write_conversation_to_file conversation
   end
 end
 
+######################################################
+#
+#
+# Everything above this is support code for the below.
+#
+#
+######################################################
 
 abort "incorrect amount of arguments: usage is #{$0} Hangouts.json" unless ARGV.length == 1
 
