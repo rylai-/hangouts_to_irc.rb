@@ -4,6 +4,10 @@ require 'yajl'
 require 'yaml'
 require 'pp'
 
+def ts timestamp
+  Time.at(timestamp).strftime '%F %T'
+end
+
 class Message
   attr_reader :lines
   def initialize hash
@@ -57,16 +61,16 @@ class Event
     case @type
     when :msg
       @data.lines.map do |line|
-        "#{Time.at(@timestamp).strftime('%F %T')} <#{@conversation.get_friendly_name @sender[:chat_id]}> #{line}"
+        "#{ts @timestamp} <#{@conversation.get_friendly_name @sender[:chat_id]}> #{line}"
       end.join "\n"
     when :topic_change
-      "#{Time.at(@timestamp).strftime('%F %T')} #{@conversation.get_friendly_name @sender[:chat_id]} changed the topic from #{@data[:old_name] || '(none)'} to #{data[:new_name]}"
+      "#{ts @timestamp} #{@conversation.get_friendly_name @sender[:chat_id]} changed the topic from #{@data[:old_name] || '(none)'} to #{data[:new_name]}"
     when :join
-      "#{Time.at(@timestamp).strftime('%F %T')} --> #{@conversation.get_friendly_name @sender[:chat_id]} has joined the chat"
+      "#{ts @timestamp} --> #{@conversation.get_friendly_name @sender[:chat_id]} has joined the chat"
     when :part
-      "#{Time.at(@timestamp).strftime('%F %T')} --> #{@conversation.get_friendly_name @sender[:chat_id]} has left the chat"
+      "#{ts @timestamp} <-- #{@conversation.get_friendly_name @sender[:chat_id]} has left the chat"
     when :call
-      "#{Time.at(@timestamp).strftime('%F %T')} --> #{@conversation.get_friendly_name @sender[:chat_id]} called the chat"
+      "#{ts @timestamp} -!- #{@conversation.get_friendly_name @sender[:chat_id]} called the chat"
     end
   end
 
